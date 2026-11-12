@@ -186,7 +186,7 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
         <button class="tab" role="tab" data-view="ops" id="tab-ops">Order detail</button>
         <button class="tab" role="tab" data-view="customer" id="tab-customer">Customer view</button>
         <button class="tab" role="tab" data-view="live" id="tab-live">Try it live</button>
-        <button class="tab" role="tab" data-view="api" id="tab-api">API</button>
+        <button class="tab" role="tab" data-view="api" id="tab-api">For engineers</button>
       </div>
     </div>
     <div class="row" id="playrow">
@@ -202,7 +202,7 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
       <span class="sub">Each second here is about a minute and a half on the road.</span>
     </div>
     <div class="policy" id="policy" hidden>
-      <label for="tol">Minutes allowed above the limit before a bag is held
+      <label for="tol">How long a bag can run warm before we hold it
         <input type="range" id="tol" min="0" max="15" value="5">
       </label>
       <span class="num" id="tolv">5 min</span>
@@ -391,8 +391,8 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     if (worst !== "pass") {
       var z = vc !== "pass" ? "chilled" : "frozen", d = diagnose(o, rs, z), held = verdict(rs, z, state.tol) === "hold";
       msg = '<div class="msg ' + worst + '">Your ' + ZONE[z].toLowerCase() + ' was above ' + fmt(LIMIT[z]) + ' °C for ' + minsAbove(rs, z) + ' min, peaking at ' + fmt(d.peak) + ' °C. ' +
-        (held ? "We have taken the items in that bag off your bill and will offer a replacement." : "That is inside our handling allowance, so nothing changes on your order.") +
-        '<em>Example customer message. The allowance is set on the Operations tab.</em></div>';
+        (held ? "We have taken the items in that bag off your bill and will offer a replacement." : "That is inside our handling grace period, so nothing changes on your order.") +
+        '<em>Example customer message. The grace period is set at the top of the page.</em></div>';
     }
     var p = state.now <= o.st.pickup ? state.now / o.st.pickup * 33 : state.now >= o.st.arrive ? 100 : 33 + (state.now - o.st.pickup) / (o.st.arrive - o.st.pickup) * 67;
     var steps = STAGES.map(function (s, i) { var t = o.st[s[0]], cls = done || i < si ? "done" : i === si ? "now" : ""; return '<li class="' + cls + '"><span class="num">' + (t <= state.now ? clock(o, t) : "") + '</span><span class="dot"></span><span>' + s[1] + '</span></li>'; }).join("");
@@ -423,11 +423,11 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     else diag = ds.map(function (d) {
       var v = verdict(rs, d.zone, state.tol), when = clock(o, d.from) + (d.open ? ", still above" : " to " + clock(o, d.to));
       var why = d.kind === "staging"
-        ? "Went warm before the rider left. " + d.minutes + " min above the limit, peak " + fmt(d.peak) + " °C. The sealed bag waited " + (o.st.pickup - o.st.seal) + " min on the handover table, so this is a store staging problem, not a road problem."
+        ? "Went warm before the rider left. " + d.minutes + " min above the limit, peak " + fmt(d.peak) + " °C. The sealed bag waited " + (o.st.pickup - o.st.seal) + " min on the handover table, so this is a store handover problem, not a road problem."
         : d.kind === "spike"
         ? "Short spike of " + d.minutes + " min, peak " + fmt(d.peak) + " °C." + (d.lidAt !== null ? " The lid sensor shows the bag opened at " + clock(o, d.lidAt) + ", so this reads as a handling event, not a cooling failure." : " It recovered on its own.")
         : "Sustained climb for " + d.minutes + " min at about " + d.rate.toFixed(2) + " °C per min, peak " + fmt(d.peak) + " °C. No lid-open event, so this reads as spent coolant or a failed seal.";
-      var act = d.kind === "staging" ? (v === "hold" ? "Action: hold the bag's items, refund and replace. Fix at the store: chilled items stay in the walk-in until the rider is scanned in." : "Action: none for the customer. Log against the store's dispatch record.") : v === "hold" ? "Action: hold the bag's items, refund them, send a replacement, and pull this bag and coolant batch for inspection." : d.kind === "spike" ? "Action: none for the customer. Log against the rider's handover record." : "Action: watch. It has not yet passed the allowance.";
+      var act = d.kind === "staging" ? (v === "hold" ? "Action: hold the bag's items, refund and replace. Fix at the store: chilled items stay in the walk-in until the rider is scanned in." : "Action: none for the customer. Log against the store's dispatch record.") : v === "hold" ? "Action: hold the bag's items, refund them, send a replacement, and pull this bag and coolant batch for inspection." : d.kind === "spike" ? "Action: none for the customer. Log against the rider's handover record." : "Action: watch. It has not yet passed the grace period.";
       return "<p><strong>" + ZONE[d.zone] + ", " + when + ".</strong> " + why + "</p><p>" + act + "</p>";
     }).join("");
     return diag;
@@ -489,18 +489,18 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     var clean = n - flagged.length;
     function tile(cls, label, val, sub) { return '<div class="tile ' + cls + '"><small>' + label + '</small><span class="num">' + val + '</span><small>' + sub + '</small></div>'; }
     var tiles = tile("plain", "Orders delivered", n, "17:00 to 20:30") + tile("", "Cold the whole way", Math.round(clean / n * 100) + "%", clean + " of " + n + " orders") +
-      tile(flagged.length - held.length ? "review" : "", "Warm-up, within allowance", flagged.length - held.length, "no customer impact") +
+      tile(flagged.length - held.length ? "review" : "", "Warm-up, within grace period", flagged.length - held.length, "no customer impact") +
       tile(held.length ? "hold" : "", "Bags held", held.length, "refund and replace") + tile(total ? "hold" : "", "Cost this shift", inr(total), inr(total / n * 100) + " per 100 orders");
-    var CAUSE = { staging: "Staging, bag waited for a rider", spike: "Handling, bag opened in transit", climb: "Coolant or seal failure" };
+    var CAUSE = { staging: "Waited at the store for a rider", spike: "Handling, bag opened in transit", climb: "Coolant or seal failure" };
     var by = ["staging", "climb", "spike"].map(function (k) { var rr = rows.filter(function (r) { return r.cause === k; }); return { k: k, n: rr.length, held: rr.filter(function (r) { return r.worst === "hold"; }).length, cost: rr.reduce(function (a, r) { return a + r.cost; }, 0) }; });
     var top = by.slice().sort(function (a, b) { return b.cost - a.cost; })[0], lead, byK = {}; by.forEach(function (b) { byK[b.k] = b; });
     var NAME = { staging: "Bags left waiting for a rider were ", climb: "Coolant and seal failures were ", spike: "Handling events were " };
     var FIRST = { staging: "Keeping chilled items in the walk-in until the rider is scanned in is the first fix to test.", climb: "A coolant check before sealing is the first fix to test.", spike: "Rider handover is the first thing to fix." };
-    if (!total) lead = "Nothing was held at this allowance. " + flagged.length + " orders had a warm-up that stayed inside it.";
+    if (!total) lead = "Nothing was held at this grace period. " + flagged.length + " orders had a warm-up that stayed inside it.";
     else lead = NAME[top.k] + top.n + " of " + n + " orders and " + Math.round(top.cost / total * 100) + "% of the cost. " + FIRST[top.k];
     var save = (state.fix.staging ? byK.staging.cost : 0) + (state.fix.coolant ? byK.climb.cost : 0) + (state.fix.lid ? byK.spike.cost : 0), after = total - save, perMonth = function (v) { return v / n * state.opd * 30; };
     var fixCard = '<section class="card"><h3>Test a fix</h3><div class="fix">' +
-      '<button class="chip" data-fix="staging" aria-pressed="' + state.fix.staging + '"><b>Last pick, first out</b><span>Chilled items leave the walk-in only when the rider is scanned in</span></button>' +
+      '<button class="chip" data-fix="staging" aria-pressed="' + state.fix.staging + '"><b>Hold chilled items for the rider</b><span>Chilled items leave the walk-in only once the rider is scanned in</span></button>' +
       '<button class="chip" data-fix="coolant" aria-pressed="' + state.fix.coolant + '"><b>Coolant check at sealing</b><span>Spent packs are caught before dispatch</span></button>' +
       '<button class="chip" data-fix="lid" aria-pressed="' + state.fix.lid + '"><b>Lid alert to the rider</b><span>Phone buzzes when a bag is open 60 s</span></button></div>' +
       '<p class="lead">Cost this shift: ' + (save ? '<span class="was num">' + inr(total) + '</span>' : '') + '<strong class="num">' + inr(after) + '</strong>' + (save ? '. That is about <strong class="num">' + inr(perMonth(save)) + '</strong> a month saved at ' + state.opd + ' orders a day.' : '. Switch a fix on to see what it would save.') + '</p>' +
@@ -518,7 +518,7 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
         '<table><thead><tr><th>Cause</th><th>Orders</th><th>Held</th><th>Cost</th></tr></thead><tbody>' + causeRows + '</tbody></table>' +
         '<p class="sub" style="margin-top:10px">At ' + state.opd + ' orders a day, a month of shifts like this one costs about <strong class="num" style="color:var(--ink)">' + inr(total / n * state.opd * 30) + '</strong>. Cost is the price of the held items plus one redelivery. Item prices are placeholders.</p></section>' + fixCard + '</div>' +
       '<div class="col"><section class="card"><h3>Every order this shift, in delivery order</h3><div class="heat">' + heat + '</div>' +
-        '<div class="key"><span><i style="background:var(--ok-soft);box-shadow:inset 0 0 0 1px var(--ok)"></i>Within limit</span><span><i style="background:var(--warn)"></i>Warm-up inside allowance</span><span><i style="background:var(--crit)"></i>Held</span><span>Select a square to open the order.</span></div></section></div></div>' +
+        '<div class="key"><span><i style="background:var(--ok-soft);box-shadow:inset 0 0 0 1px var(--ok)"></i>Within limit</span><span><i style="background:var(--warn)"></i>Warm-up inside grace period</span><span><i style="background:var(--crit)"></i>Held</span><span>Select a square to open the order.</span></div></section></div></div>' +
       '<div class="grid"><section class="card"><h3>By hub</h3><table><thead><tr><th>Hub</th><th>Orders</th><th>Flagged</th><th>Held</th><th>Cost</th></tr></thead><tbody>' + hubTable + '</tbody></table><p class="sub" style="margin-top:10px">Hub names are placeholders until real hub data is connected.</p></section>' +
       '<section class="card"><h3>Action queue</h3><div class="scroll"><table><thead><tr><th>Order</th><th>Hub</th><th>Cost</th><th>Status</th></tr></thead><tbody>' + queue + '</tbody></table></div>' +
       '<button class="chip" id="csv" style="margin-top:12px"><b>Download shift report (CSV)</b><span>One row per flagged order</span></button></section></div>' +
@@ -533,7 +533,7 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     });
     return lines.join("\n");
   }
-  var CAUSE_TXT = { staging: "Staging, bag waited for a rider", spike: "Handling, bag opened in transit", climb: "Coolant or seal failure" };
+  var CAUSE_TXT = { staging: "Waited at the store for a rider", spike: "Handling, bag opened in transit", climb: "Coolant or seal failure" };
   function liveNew() {
     return { id: "LIVE", mode: "Live test", area: "Your test bag", start: 18 * 60, dur: 90, seed: 1, st: { pick: 0, qc: 0, seal: 0, pickup: 0, arrive: 90, done: 90 },
       items: [["Salmon fillet, 300 g", "chilled", 890], ["Burrata, 125 g", "chilled", 420]], data: [{ t: 0, chilled: 3.3, frozen: -20.4, lid: false, ambient: 24 }], lid: false, cool: false };
@@ -552,7 +552,7 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     var L = state.live, rs = L.data, last = rs[rs.length - 1], v = verdict(rs, "chilled", state.tol), d = diagnose(L, rs, "chilled"), m = minsAbove(rs, "chilled"), done = last.t >= L.dur;
     var pill = v === "pass" ? "Kept cold since packing" : v === "review" ? "Brief warm-up" + (d && d.open ? "" : ", back in range") : "A bag went warm";
     var msg = v === "pass" ? '<p class="sub" style="margin-top:12px">Nothing to tell the customer. Use the buttons above to cause a problem.</p>'
-      : '<div class="msg ' + v + '">Your chilled bag was above 5.0 °C for ' + m + ' min, peaking at ' + fmt(d.peak) + ' °C. ' + (v === "hold" ? "We have taken the items in that bag off your bill and will offer a replacement." : "That is inside our handling allowance, so nothing changes on your order.") + '</div>';
+      : '<div class="msg ' + v + '">Your chilled bag was above 5.0 °C for ' + m + ' min, peaking at ' + fmt(d.peak) + ' °C. ' + (v === "hold" ? "We have taken the items in that bag off your bill and will offer a replacement." : "That is inside our handling grace period, so nothing changes on your order.") + '</div>';
     var ev = events(L, rs).filter(function (e) { return e.t > 0 && e.t < L.dur; }).reverse().map(function (e) { return '<li class="' + e.type + '"><span class="num">' + clock(L, e.t) + '</span><span>' + esc(e.text) + '</span></li>'; }).join("") || '<li><span></span><span>No events yet.</span></li>';
     return '<div class="grid"><div class="col">' +
       '<section class="card hero"><h3>What the customer sees</h3><div class="bigtemp num">' + fmt(last.chilled) + ' °C</div><div style="margin-top:8px"><span class="pill ' + v + '">' + pill + '</span></div>' + msg + '</section>' +
@@ -561,10 +561,10 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
       '<section class="card"><h3>Event log, newest first</h3><ul class="log">' + ev + '</ul></section></div></div>';
   }
   var TOUR = [
-    { v: "shift", t: "Start with the whole evening shift on one screen. Each square is an order. Red means a bag had to be held." },
+    { v: "shift", t: "Start with the whole evening shift on one screen. Each square is an order. Red means a bag was held: it ran warm for longer than the grace period at the top of the page." },
     { v: "shift", t: "Three causes, very different costs. Switch on a fix under Test a fix and watch the monthly saving." },
-    { v: "ops", id: "SG-2389", t: "Warm before it left the store. The sealed bag waited 14 minutes for a rider, the handover gap regulators are now checking." },
-    { v: "ops", id: "SG-2418", t: "A handling spike. The lid sensor explains it, it stayed inside the allowance, and nobody is refunded." },
+    { v: "ops", id: "SG-2389", t: "Warm before it left the store. The sealed bag waited 14 minutes for a rider, the handover gap that is easy to miss." },
+    { v: "ops", id: "SG-2418", t: "A handling spike. The lid sensor explains it, it stayed inside the grace period, and nobody is refunded." },
     { v: "ops", id: "SG-2419", t: "A coolant failure. Slow climb with no lid event, so the bag is held before the customer has to complain." },
     { v: "customer", id: "SG-2419", t: "What that customer sees: the temperature record, and the refund already made." },
     { v: "live", t: "Now break one yourself. Open the lid or fail the coolant and watch both sides react." }
