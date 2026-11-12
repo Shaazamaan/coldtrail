@@ -287,6 +287,9 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     }
   })();
   ORDERS.forEach(function (o) { o.data = build(o); });
+  // Hubs group the delivery areas by location. Names are placeholders until real hub data is connected.
+  function hubOf(o) { var a = o.area; if (/DLF/.test(a)) return "DLF hub"; if (/Sector 5/.test(a) || /Nirvana/.test(a)) return "Sector hub"; return "South hub"; }
+  var HUBS = ["DLF hub", "South hub", "Sector hub"], ACTS = ["Open", "Rider contacted", "Refund issued", "Closed"];
 
   // ---- Simulated API: the same shapes a real backend would return ----
   function order(id) { for (var i = 0; i < ORDERS.length; i++) if (ORDERS[i].id === id) return ORDERS[i]; return ORDERS[0]; }
@@ -340,7 +343,7 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
   }
 
   // ---- State ----
-  var state = { id: "SG-2418", now: 21, playing: false, speed: 1, view: "shift", tol: 5, redel: 80, opd: 300, ep: 0, timer: null };
+  var state = { id: "SG-2418", now: 21, playing: false, speed: 1, view: "shift", tol: 5, redel: 80, opd: 300, ep: 0, timer: null, acts: {} };
   var VIEWS = ["shift", "ops", "customer", "live", "api"];
   state.fix = { staging: false, coolant: false, lid: false }; state.tour = -1; state.live = null; var liveTimer = null;
   function inr(v) { return "₹" + Math.round(v).toLocaleString("en-IN"); }
@@ -506,6 +509,9 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     var frow = flagged.map(function (r) {
       return '<tr><td class="num">' + r.o.id + "</td><td>" + esc(r.o.area.replace(", Gurugram", "")) + "</td><td>" + CAUSE[r.cause].split(",")[0] + '</td><td class="num">' + r.mins + ' min</td><td class="num">' + fmt(r.peak) + ' °C</td><td class="st-' + r.worst + '">' + WORD[r.worst] + '</td><td class="num">' + (r.cost ? inr(r.cost) : "–") + '</td><td><button class="open" data-open="' + r.o.id + '">Open</button></td></tr>';
     }).join("") || '<tr><td colspan="8">No flagged orders.</td></tr>';
+    var hubRows = HUBS.map(function (h) { var rr = rows.filter(function (r) { return hubOf(r.o) === h; }); return { h: h, n: rr.length, flag: rr.filter(function (r) { return r.worst !== "pass"; }).length, held: rr.filter(function (r) { return r.worst === "hold"; }).length, cost: rr.reduce(function (a, r) { return a + r.cost; }, 0) }; });
+    var hubTable = hubRows.map(function (b) { return "<tr><td>" + b.h + '</td><td class="num">' + b.n + '</td><td class="num">' + b.flag + '</td><td class="num">' + b.held + '</td><td class="num">' + inr(b.cost) + "</td></tr>"; }).join("");
+    var queue = held.map(function (r) { var st = state.acts[r.o.id] || "Open"; return '<tr><td class="num">' + r.o.id + "</td><td>" + hubOf(r.o) + '</td><td class="num">' + inr(r.cost) + '</td><td><button class="chip" data-act="' + r.o.id + '" aria-label="Status for ' + r.o.id + '"><b>' + st + "</b><span>Tap to change</span></button></td></tr>"; }).join("") || '<tr><td colspan="4">Nothing held this shift.</td></tr>';
     var heat = rows.map(function (r) { return '<button class="' + r.worst + '" data-open="' + r.o.id + '" title="' + r.o.id + " · " + clock(r.o, r.o.dur) + '" aria-label="Open order ' + r.o.id + ", " + WORD[r.worst] + '"></button>'; }).join("");
     return '<div class="col"><div class="tiles five">' + tiles + '</div>' +
       '<div class="grid"><div class="col"><section class="card"><h3>What to fix first</h3><p class="lead">' + lead + '</p>' +
@@ -513,9 +519,21 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
         '<p class="sub" style="margin-top:10px">At ' + state.opd + ' orders a day, a month of shifts like this one costs about <strong class="num" style="color:var(--ink)">' + inr(total / n * state.opd * 30) + '</strong>. Cost is the price of the held items plus one redelivery. Item prices are placeholders.</p></section>' + fixCard + '</div>' +
       '<div class="col"><section class="card"><h3>Every order this shift, in delivery order</h3><div class="heat">' + heat + '</div>' +
         '<div class="key"><span><i style="background:var(--ok-soft);box-shadow:inset 0 0 0 1px var(--ok)"></i>Within limit</span><span><i style="background:var(--warn)"></i>Warm-up inside allowance</span><span><i style="background:var(--crit)"></i>Held</span><span>Select a square to open the order.</span></div></section></div></div>' +
+      '<div class="grid"><section class="card"><h3>By hub</h3><table><thead><tr><th>Hub</th><th>Orders</th><th>Flagged</th><th>Held</th><th>Cost</th></tr></thead><tbody>' + hubTable + '</tbody></table><p class="sub" style="margin-top:10px">Hub names are placeholders until real hub data is connected.</p></section>' +
+      '<section class="card"><h3>Action queue</h3><div class="scroll"><table><thead><tr><th>Order</th><th>Hub</th><th>Cost</th><th>Status</th></tr></thead><tbody>' + queue + '</tbody></table></div>' +
+      '<button class="chip" id="csv" style="margin-top:12px"><b>Download shift report (CSV)</b><span>One row per flagged order</span></button></section></div>' +
       '<section class="card"><h3>Flagged orders</h3><div class="scroll"><table><thead><tr><th>Order</th><th>Area</th><th>Cause</th><th>Above limit</th><th>Peak</th><th>Outcome</th><th>Cost</th><th></th></tr></thead><tbody>' + frow + '</tbody></table></div></section></div>';
   }
 
+  function csvText() {
+    var q = function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; };
+    var lines = [["Order", "Hub", "Area", "Cause", "Minutes above limit", "Peak C", "Outcome", "Cost INR", "Status"].map(q).join(",")];
+    shiftRows().filter(function (r) { return r.worst !== "pass"; }).forEach(function (r) {
+      lines.push([r.o.id, hubOf(r.o), r.o.area, r.cause ? CAUSE_TXT[r.cause] : "", r.mins, r.peak === null ? "" : fmt(r.peak), WORD[r.worst], Math.round(r.cost), state.acts[r.o.id] || (r.worst === "hold" ? "Open" : "")].map(q).join(","));
+    });
+    return lines.join("\n");
+  }
+  var CAUSE_TXT = { staging: "Staging, bag waited for a rider", spike: "Handling, bag opened in transit", climb: "Coolant or seal failure" };
   function liveNew() {
     return { id: "LIVE", mode: "Live test", area: "Your test bag", start: 18 * 60, dur: 90, seed: 1, st: { pick: 0, qc: 0, seal: 0, pickup: 0, arrive: 90, done: 90 },
       items: [["Salmon fillet, 300 g", "chilled", 890], ["Burrata, 125 g", "chilled", 420]], data: [{ t: 0, chilled: 3.3, frozen: -20.4, lid: false, ambient: 24 }], lid: false, cool: false };
@@ -593,6 +611,8 @@ pre { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.55; ove
     if (b.id === "tournext") { tourGo(state.tour + 1); return; }
     if (b.id === "tourback") { tourGo(Math.max(0, state.tour - 1)); return; }
     if (b.id === "tourx") { tourGo(-1); return; }
+    if (b.dataset.act) { var k = ACTS.indexOf(state.acts[b.dataset.act] || "Open"); state.acts[b.dataset.act] = ACTS[(k + 1) % ACTS.length]; render(); return; }
+    if (b.id === "csv") { var blob = new Blob([csvText()], { type: "text/csv" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "coldtrail-shift-report.csv"; document.body.appendChild(a); a.click(); a.remove(); return; }
     if (b.dataset.fix) { state.fix[b.dataset.fix] = !state.fix[b.dataset.fix]; render(); return; }
     if (b.id === "lid") { state.live.lid = !state.live.lid; render(); return; }
     if (b.id === "cool") { state.live.cool = !state.live.cool; render(); return; }
